@@ -1,5 +1,12 @@
+优秀博客
 http://www.dczou.com/viemall/category/%e5%88%86%e5%b8%83%e5%bc%8f%e6%9e%b6%e6%9e%84/elasticsearch
 
+掘金
+https://juejin.im/post/5eca2311f265da771066c87d
 
-系列blog
-http://www.dczou.com/viemall/category/%e5%88%86%e5%b8%83%e5%bc%8f%e6%9e%b6%e6%9e%84/elasticsearch
+
+docker 搭建elk
+https://juejin.im/post/5eaff5506fb9a04359028827
+
+elk实战  Filebeat + Kafka + Elasticsearch + Kibana 实现日志收集与管理
+https://juejin.im/post/5ea93177e51d454dc87f1b16
