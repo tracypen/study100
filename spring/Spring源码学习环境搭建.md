@@ -154,8 +154,31 @@ public class HellloSpring {
 		System.out.println(person.say());
 	}
 }
+
 ```
 ![](https://upload-images.jianshu.io/upload_images/8387919-9e96f51a21fd5101.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+- 也可以使用xml进行bean配置
+
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <beans xmlns="http://www.springframework.org/schema/beans"
+  	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  	   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+  
+  	<bean id="person" class="com.hp.beans.Person">
+  		<property name="name" value="haopeng"></property>
+  		<property name="age" value="28"></property>
+  	</bean>
+  </beans>
+  
+  //ApplicationContext context = new ClassPathXmlApplicationContext("beans.xml");
+  //Person person= (Person) context.getBean("person");
+  ```
+
+  
+
+
 
 成功的迈出第一步！！！加油。
 
