@@ -1,5 +1,3 @@
-![](https://upload-images.jianshu.io/upload_images/8387919-4465e07a1274c74c.jpg?imageMogr2/auto-orient/strip|imageView2/2/w/1240)
-
 ## 简介
 
 > `Zookeeper`是一个分布式的、开源的程序协调服务，是 hadoop 项目下的一个子项目。他提供的主要功 能包括：配置管理、名字服务、分布式锁、集群管理等。从名字来看zookeeper 就是动物园管理员，他是用来管 hadoop（大象）、Hive(蜜蜂)、pig(小猪)的管理员， Apache Hbase 和 Apache Solr 的分布式集群都用到了 zookeeper。另外zookeeper是分布式的基础，学习好zookeeper是学习分布式系统的基础，比如ZAB协议等。
