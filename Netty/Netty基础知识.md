@@ -367,10 +367,122 @@ bootstrap.config().group().schedule(() -> connect(bootstrap, host, port, retry -
 - 解码(解析Java对象过程)流程:1.调用skipBytes()方法跳过魔数 0x123
  45678字节;2.调用ByteBuf的API获取序列化算法标识、指令、数据包长度;3.根据获取的数据包长度取出数据,通过指令拿获取数据包对应的Java对象类型,根据序列化算法标识获取序列化对象,将字节数组转换为Java对象即实现解码.
 
+### 六、实战:Netty实现客户端登录
+
+登录流程:客户端channelActive()构建登录请求对象,通过ctx.alloc()获取ByteBuf分配器,将登录请求对象编码填充到ByteBuf,调用ctx.channel()获取当前连接,writeAndFlush()把二进制数据写到服务端;服务端channelRead()接收登录请求ByteBuf解码登录请求对象进行登录校验;服务端登录校验通过构造登录响应对象,登录响应对象编码ByteBuf写到客户端;客户端接收登录响应ByteBuf解码登录响应对象,判断是否登录成功处理登录响应即实现登录.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-7ec3f00c0add616a.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 七、实现客户端与服务端收发消息
+
+收发消息流程:客户端连接服务端启动控制台线程检查当前登录状态,登录成功通过channel.attr().set()绑定Channel属性设置登录标识, 构建消息请求对象,通过ctx.alloc()获取ByteBuf分配器,将消息请求对象编码填充到ByteBuf,调用ctx.channel()获取当前连接,writeAndFlush()把二进制数据写到服务端;服务端channelRead()接收消息请求ByteBuf解码消息请求对象进行消息处理;服务端处理消息完毕通过构造消息响应对象, 消息响应对象编码ByteBuf写到客户端;客户端接收消息响应ByteBuf解码消息响应对象处理消息响应即实现收发消息.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-72b6375145606806.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 八、Pipeline与ChannelHandler
+
+#### Pipeline与ChannelHandler的构成:
+
+一条连接对应一个Channel,Channel处理逻辑在ChannelPipeline对象里面,ChannelPipeline是双向链表结构,与Channel之间是一对一的关系.ChannelPipeline里面每个节点是ChannelHandlerContext对象, ChannelHandlerContext获取与Channel相关的上下文信息,包含逻辑处理器ChannelHandler.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-fbb1e0635918fc69.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+#### ChannelHandler的分类
+
+- (1)`ChannelInboundHandler`接口处理读数据逻辑,定义组装响应前期处理逻辑,重要方法为`channelRead()`;
+
+- (2) `ChannelOutBoundHandler`接口处理写数据逻辑,定义组装响应后期把数据写到对端逻辑,核心方法为`write().ChannelInboundHandler/ChannelOutBoundHandler`接口默认实现为`ChannelInboundHandlerAdapter/ChannelOutBoundHandlerAdapter`,默认情况下把读写事件传播到下一个Handler.
+   `ChannelInboundHandler`事件传播顺序与通过`addLast()`方法添加顺序相同. `ChannelOutboundHandler`事件传播顺序与通过`addLast()`方法添加顺序相反. `ChannelHandler`以双向链表方式连接,实际链表的节点是`ChannelHandlerContext`
+
+![](https://upload-images.jianshu.io/upload_images/8387919-dd645baf3524b8d1.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+`ChannelInboundHandler`事件通常只会传播到下一个`ChannelInboundHandler,ChannelOutboundHandler`事件通常只会传播到下一个`ChannelOutboundHandler`,两者相互不受干扰.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-181b0a41977fe71c.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 九、构建客户端与服务端`Pipeline`
+
+ChannelInboundHandlerAdapter/ChannelOutboundHandlerAdapter适配器用于实现ChannelInboundHandler/ChannelOutboundHandler接口方法. 默认情况下ChannelInboundHandlerAdapter的channelRead()方法通过fireChannelRead()方法把上一个Handler的输出结果传递到下一个Handler, ChannelOutboundHandlerAdapter的write()方法把对象传递到下一个OutBound节点,传播顺序与ChannelInboundHandler相反. Pipeline添加的第一个Handler的channelRead()方法参数msg对象是 ByteBuf,服务端接收数据首先要做的第一步逻辑是把ByteBuf进行解码,然后把解码结果传递到下一个Handler.
+ ByteToMessageDecoder的decode()方法参数in是ByteBuf类型,参数out是List类型,通过参数out添加解码结果对象实现结果往下一个Handler进行传递,不用关心ByteBuf强制转换和解码结果传递,自动进行内存释放.
+ 继承SimpleChannelInboundHandler类传递泛型参数,channelRead0()方法不用通过if逻辑判断当前对象是否为本Handler能够处理的对象,不用强制转换当前对象,不用往下传递本Handler无法处理的对象,交给父类 SimpleChannelInboundHandler实现,只需要专注于业务处理逻辑即可.
+ MessageToByteEncoder将对象转换到二进制数据,不需要创建ByteBuf,只需要实现encode()方法自定义编码,encode()方法第2个参数是Java对象,第3个参数是ByteBuf对象,要做的事情是把Java对象字段写到ByteBuf,不再需要手动分配ByteBuf,不用关心ByteBuf创建,不用每次向对端写Java对象都进行一次编码.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-4a3362716fc08dcf.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 十、拆包粘包理论与解决方案
+
+拆包基本原理是不断从TC 缓冲区读取数据,每次读取完毕需要判断是否为一个完整的数据包.(1)如果当前读取的数据不足以拼接成一个完整的业务数据包,保留此数据继续从TCP缓冲区读取,直到得到一个完整的数据.(2)如果当前读到的数据加上已经读取的数据足够拼接成一个数据包,将已经读取的数据拼接上本次读取的数据构成一个完整的业务数据包传递到业务逻辑,多余的数据仍然保留以便和下次读到的数据尝试拼接.
+ Netty自带的拆包器:
+- 1.固定长度的拆包器FixedLengthFrameDecoder:如果应用层协议非常简单,每个数据包的长度都是固定的,需要把拆包器加到Pipeline,Netty把指定长度的数据包(ByteBuf)传递到下一个ChannelHandler.
+- 2.行拆包器LineBasedFrameDecoder:发送端发送数据包的时候,每个数据包之间以换行符作为分隔,接收端通过LineBasedFrameDecoder将粘包的ByteBuf拆分成一个个完整的应用层数据包.
+- 3.分隔符拆包器DelimiterBasedFrameDecoder:行拆包器的通用版本,自定义分隔符.
+- 4.基于长度域拆包器LengthFieldBasedFrameDecoder:最通用的一种拆包器,只要自定义协议包含长度域字段均使用此拆包器实现应用层拆包.使用LengthFieldBasedFrameDecoder需要长度域相对整个数据包的偏移量和长度域的长度构造拆包器,Pipeline最前面添加此拆包器.
+ 拒绝非本协议连接:数据包的开头加上魔数尽早屏蔽非本协议的客户端,通常放在第一个Handler处理此逻辑,每个客户端发过来的数据包都做一次快速判断,判断当前发来的数据包是否是满足自定义协议,需要继承LengthFieldBasedFrameDecoder覆盖decode()方法,调用decode()方法之前判断前四个字节是否是等于魔数0x12345678. 基于 Netty自带的拆包器在拆包之前判断当前连上来的客户端是否是支持自定义协议的客户端,如果不支持尽早关闭连接节省资源.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-e6b79e3744a40ec0.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 十一、ChannelHandler的生命周期
+
+新建连接ChannelHandler回调方法执行顺序:
+ handlerAdded()->channelRegistered()->channelActive()->channelRead()->channelReadComplete().
+ handlerAdded():当检测到新连接后调用ch.pipeline().addLast()方法回调,表示当前Channel成功添加Handler处理器.
+ channelRegistered():表示当前Channel逻辑处理和Nio线程NioEventLoop建立绑定关系,从线程池里面获取线程绑定在Channel上面.
+ channelActive():表示当前Channel业务逻辑处理链准备就绪即当前Channel的Pipeline添加所有Handler处理器完毕以及绑定Nio线程后,该连接真正激活回调到此方法.
+ channelRead():客户端向服务端发来数据,每次都会回调此方法,表示有数据可读.
+ channelReadComplete():服务端每次读完一次完整的数据后回调此方法,表示数据读取完毕.
+ 关闭连接ChannelHandler回调方法执行顺序:
+ channelInactive()->channelUnregistered()->handlerRemoved()
+ channelInactive():表示连接已经被关闭,此连接在TCP层面不再是 ESTABLISH状态.
+ channelUnregistered():表示与此连接对应的Nio线程移除对此连接的处理.
+ handlerRemoved():表示把此连接添加的所有业务逻辑Handler处理器移除.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-ea685353f37ab8bf.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+ChannelInitializer实现原理: ChannelInitializer定义initChannel()抽象方法,服务端启动流程实现逻辑是往Pipeline里面添加Handler处理器链.handlerAdded()/channelRegistered()方法尝试调用initChannel()方法,initChannel()使用putIfAbsent()防止initChannel()调用多次.
+ handlerAdded()/handlerRemoved()通常用于资源的申请和释放.
+ channelActive()/channelInActive()用于TCP连接的建立与释放统计单机的连接数,过滤客户端连接IP黑白名单.
+ channelRead()用于服务端根据自定义协议来进行拆包等.
+ channelReadComplete()用于调用ctx.channel().flush()方法进行批量刷新.
+
+### 十二、使用ChannelHandler的热插拔实现客户端身份校验
+
+身份校验处理器AuthHandler继承ChannelInboundHandlerAdapter,覆盖channelRead()方法决定是否把读到的数据传递到后续指令处理器之前,首先判断是否登录成功,如果未登录直接强制关闭连接,否则把读到的数据向下传递给后续指令处理器. AuthHandler判断如果经过权限认证,调用Pipeline的remove()方法删除自身,此客户端连接的逻辑链不再有该处理逻辑实现热插拔机制动态删除逻辑.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-0653b78460abb195.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 十三、群聊消息的收发及Netty性能优化
+
+共享Handler:每次有新连接到来调用ChannelInitializer的initChannel()方法, 每个指令处理器ChannelHandler内部没有成员变量即无状态时调用pipeline().addLast()方法使用单例模式添加ChannelHandler,不需要每次都new创建指令处理器对象,提高效率避免创建很多小的对象. 指令处理器ChannelHandler要被多个Channel 进行共享必须要加上@ChannelHandler.Sharable注解显式告诉Netty此ChannelHandler支持多个Channel共享否则报错.
+ 压缩Handler-合并编解码器:继承MessageToMessageCodec覆盖decode()/encode()方法实现编/解码操作.
+ 缩短事件传播路径:
+ 1.压缩Handler-合并平行ChannelHandler:平行指令处理器ChannelHan
+ dler压缩到一个指令处理器ChannelHandler, 此指令处理器维护指令到各个指令处理器的映射Map,每次回调此指令处理器的channelRead0()方法通过指令寻找指令处理器ChannelHandler调用其channelRead()方法,最终调用每个指令处理器ChannelHandler的channelRead0()方法.
+ 2.更改事件传播源: 如果OutBound类型的ChannelHandler较多,写数据使用ctx.writeAndFlush()减短事件传播路径.
+ ctx.writeAndFlush()是从Pipeline链的当前节点开始往前找到第一个OutBound类型的ChannelHandler把对象往前进行传播,如果此对象确认不需要经过其他OutBound类型的ChannelHandler处理则使用此方法.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-e27362ba20de8612.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+ctx.channel().writeAndFlush()是从Pipeline链的最后一个OutBound类型的ChannelHandler开始把对象往前进行传播,如果确认当前创建的对象需要经过后面OutBound类型的 ChannelHandler则调用此方法.
+
+![](https://upload-images.jianshu.io/upload_images/8387919-a7bb26be9615c955.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+减少阻塞主线程操作:需要把耗时操作丢到自定义业务线程池处理, Nio线程会有很多Channel共享不能阻塞.
+ 如何准确统计处理时长:writeAndFlush()方法返回ChannelFuture对象添加监听器Listener,回调方法监听writeAndFlush()执行结果进而执行其他逻辑最后统计耗时.Netty里面很多方法都是异步操作,业务线程统计操作耗时需要使用监听器回调方式统计,Nio线程调用直接统计操作耗时即可.
+
+### 十四、心跳与空闲检测
+
+连接假死现象:在某一端(服务端或者客户端)看来底层TCP连接已经断开,但是应用程序并没有捕获到,因此认为这条连接仍然是存在的,从TCP层面来说,只有收到四次握手数据包或者一个RST数据包,连接的状态表示已断开.
+ 连接假死问题:对于服务端来说,因为每条连接都耗费CPU和内存资源,大量假死的连接逐渐耗光服务器的资源,最终导致性能逐渐下降,程序奔溃;对于客户端来说,连接假死造成发送数据超时,影响用户体验.
+ 连接假死原因:1.应用程序出现线程堵塞,无法进行数据读写;2.客户端或者服务端网络相关设备出现故障,比如网卡,机房故障;3.公网丢包,公网环境相对内网而言容易出现丢包、网络抖动等现象,如果在一段时间内用户接入网络连续出现丢包现象,则对客户端来说数据一直发送不出去,服务端接收不到客户端的数据,连接一直耗着.
+ 服务端空闲检测:服务端对于连接假死的应对策略是空闲检测.空闲检测是指每隔一段时间检测这段时间内是否有数据读写,通过IdleStateHandler回调channelIdle()方法关闭连接实现空闲检测.
+ 客户端定时发心跳:客户端通过executor() 获取当前Channel绑定的Nio线程调用scheduleAtFixedRate()方法每隔一段时间定期发送心跳数据包到服务端. 通常空闲检测时间要比发送心跳时间的两倍要长一些,排除偶发的公网抖动防止误判.
+ 服务端回复心跳与客户端空闲检测: 客户端向服务端定期发送心跳,服务端接收心跳回复客户端,给客户端发送心跳响应包即可.如果在一段时间之内客户端没有接收服务端发来的数据判定连接为假死状态.
 
 
 
 ### 参考资料
+
+- [源码地址](https://github.com/lightningMan/flash-netty.git)
 - [Netty入门与实战:仿写微信IM即时通讯系统](https://www.jianshu.com/p/7522bda72a25)
--  [闪电侠 Netty 小册里的骚操作](https://www.jianshu.com/p/bb0805d65388)
--  [思维导图](https://www.processon.com/view/link/5bc343dde4b09b21f31baf69)
+- [闪电侠 Netty 小册里的骚操作](https://www.jianshu.com/p/bb0805d65388)
+- [思维导图](https://www.processon.com/view/link/5bc343dde4b09b21f31baf69)
